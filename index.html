@@ -1,298 +1,249 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>幣安下單機器人</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            padding: 20px;
-            line-height: 1.6;
-        }
+import json
+import logging
+import telebot
+from binance.client import Client
+from binance.exceptions import BinanceAPIException
+from telebot import types
+from datetime import datetime
 
-        .container {
-            max-width: 400px;
-            margin: 0 auto;
-            background: var(--tg-theme-secondary-bg-color, #f8f9fa);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
+# 設定日誌
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
-        .header {
-            text-align: center;
-            margin-bottom: 24px;
-        }
-
-        .header h1 {
-            font-size: 24px;
-            font-weight: 600;
-            color: var(--tg-theme-button-color, #3390ec);
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            font-size: 14px;
-            color: var(--tg-theme-text-color, #000000);
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid var(--tg-theme-button-color, #3390ec);
-            border-radius: 8px;
-            font-size: 16px;
-            background: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            transition: border-color 0.3s ease;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--tg-theme-button-color, #2c82df);
-            box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1);
-        }
-
-        .two-columns {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
-
-        .submit-button {
-            width: 100%;
-            padding: 16px;
-            background: var(--tg-theme-button-color, #3390ec);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-            margin-top: 8px;
-        }
-
-        .submit-button:disabled {
-            background: var(--tg-theme-hint-color, #6c757d);
-            cursor: not-allowed;
-        }
-
-        #price_group {
-            display: none;
-        }
-
-        @media (max-width: 480px) {
-            .container {
-                padding: 16px;
-                margin: 10px;
-            }
+class BinanceOrderBot:
+    def __init__(self, config_file='binance_order_config.json'):
+        """初始化機器人"""
+        try:
+            # 載入設定檔
+            with open(config_file, 'r', encoding='utf-8') as f:
+                self.config = json.load(f)
             
-            .two-columns {
-                grid-template-columns: 1fr;
-                gap: 12px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>📊 幣安下單機器人</h1>
-        </div>
-
-        <form id="orderForm">
-            <!-- 交易對輸入 -->
-            <div class="form-group">
-                <label class="form-label">交易對</label>
-                <input type="text" class="form-control" id="symbol" 
-                       placeholder="例如: BTCUSDT" required>
-            </div>
-
-            <!-- 做多做空 -->
-            <div class="form-group">
-                <label class="form-label">交易方向</label>
-                <select class="form-control" id="direction" required>
-                    <option value="">請選擇方向</option>
-                    <option value="做多">做多 (BUY)</option>
-                    <option value="做空">做空 (SELL)</option>
-                </select>
-            </div>
-
-            <!-- 訂單類型 -->
-            <div class="form-group">
-                <label class="form-label">訂單類型</label>
-                <select class="form-control" id="order_type" required>
-                    <option value="">請選擇類型</option>
-                    <option value="MARKET">市價單</option>
-                    <option value="LIMIT">限價單</option>
-                </select>
-            </div>
-
-            <!-- 數量 -->
-            <div class="form-group">
-                <label class="form-label">數量</label>
-                <input type="number" class="form-control" id="quantity" 
-                       placeholder="例如: 0.01" step="0.00001" min="0" required>
-            </div>
-
-            <!-- 限價 (僅限價單顯示) -->
-            <div class="form-group" id="price_group">
-                <label class="form-label">限價 (USDT)</label>
-                <input type="number" class="form-control" id="price" 
-                       placeholder="例如: 50000" step="0.01" min="0">
-            </div>
-
-            <!-- 止損價 -->
-            <div class="form-group">
-                <label class="form-label">止損價 (USDT)</label>
-                <input type="number" class="form-control" id="stop_price" 
-                       placeholder="例如: 48000" step="0.01" min="0">
-            </div>
-
-            <!-- 槓桿倍數 -->
-            <div class="form-group">
-                <label class="form-label">槓桿倍數</label>
-                <select class="form-control" id="leverage" required>
-                    <option value="">請選擇槓桿</option>
-                    <option value="1">1x</option>
-                    <option value="2">2x</option>
-                    <option value="3">3x</option>
-                    <option value="5">5x</option>
-                    <option value="10">10x</option>
-                    <option value="20">20x</option>
-                    <option value="50">50x</option>
-                    <option value="75">75x</option>
-                    <option value="100">100x</option>
-                </select>
-            </div>
-
-            <!-- 提交按鈕 -->
-            <button type="submit" class="submit-button" id="submitBtn">
-                執行下單
-            </button>
-        </form>
-    </div>
-
-    <script>
-        // 初始化 Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-
-        // 表單處理
-        const form = document.getElementById('orderForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const orderTypeSelect = document.getElementById('order_type');
-        const priceGroup = document.getElementById('price_group');
-        const priceInput = document.getElementById('price');
-
-        // 監聽訂單類型變化
-        orderTypeSelect.addEventListener('change', function() {
-            if (this.value === 'LIMIT') {
-                priceGroup.style.display = 'block';
-                priceInput.required = true;
-            } else {
-                priceGroup.style.display = 'none';
-                priceInput.required = false;
-                priceInput.value = '';
-            }
-        });
-
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
+            # 初始化 Telegram Bot
+            self.bot = telebot.TeleBot(self.config['telegram_bot_token'])
             
-            // 收集表單資料
-            const formData = {
-                symbol: document.getElementById('symbol').value.toUpperCase(),
-                direction: document.getElementById('direction').value,
-                order_type: document.getElementById('order_type').value,
-                quantity: document.getElementById('quantity').value,
-                stop_price: document.getElementById('stop_price').value,
-                leverage: document.getElementById('leverage').value
-            };
+            # 初始化變數
+            self.binance_client = None
+            
+            # 註冊處理器
+            self.register_handlers()
+            
+            logger.info("機器人初始化完成")
+            
+        except Exception as e:
+            logger.error(f"機器人初始化失敗: {e}")
+            raise e
 
-            // 限價單需要價格
-            if (formData.order_type === 'LIMIT') {
-                formData.price = document.getElementById('price').value;
-            }
+    def initialize_binance(self):
+        """初始化幣安 API 連接"""
+        try:
+            self.binance_client = Client(
+                api_key=self.config['binance_apikey'],
+                api_secret=self.config['binance_apisecret'],
+                testnet=self.config.get('binance_use_testnet', True)
+            )
+            
+            # 測試連接
+            account = self.binance_client.futures_account()
+            logger.info("✅ 幣安 API 連接成功")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 幣安 API 連接失敗: {e}")
+            return False
 
-            // 驗證資料
-            if (!formData.symbol || !formData.direction || !formData.order_type || 
-                !formData.quantity || !formData.leverage) {
-                tg.showAlert('請填寫所有必填欄位！');
-                return;
-            }
+    def register_handlers(self):
+        """註冊所有 Telegram 訊息處理器"""
+        
+        @self.bot.message_handler(commands=['start'])
+        def start_command(message):
+            """啟動指令"""
+            # 改用 ReplyKeyboardMarkup
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+            
+            # WebApp 按鈕 - 使用 KeyboardButton
+            web_app = types.WebAppInfo(url="https://您的GitHub用戶名.github.io/binance-order-webapp/")
+            markup.add(types.KeyboardButton(
+                text="📊 開啟下單介面",
+                web_app=web_app
+            ))
+            
+            self.bot.send_message(
+                message.chat.id,
+                "🚀 **幣安下單機器人**\n\n點擊下方按鈕開啟下單介面：",
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
 
-            if (parseFloat(formData.quantity) <= 0) {
-                tg.showAlert('數量必須大於 0！');
-                return;
-            }
+        @self.bot.message_handler(commands=['new_order'])
+        def new_order_command(message):
+            """下單指令"""
+            # 改用 ReplyKeyboardMarkup
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+            
+            # WebApp 按鈕
+            web_app = types.WebAppInfo(url="https://您的GitHub用戶名.github.io/binance-order-webapp/")
+            markup.add(types.KeyboardButton(
+                text="📊 開啟下單介面",
+                web_app=web_app
+            ))
+            
+            self.bot.send_message(
+                message.chat.id,
+                "📊 **建立新訂單**\n\n點擊下方按鈕開啟下單介面：",
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
 
-            if (formData.order_type === 'LIMIT' && parseFloat(formData.price) <= 0) {
-                tg.showAlert('限價必須大於 0！');
-                return;
-            }
-
-            // 確認對話框
-            let confirmText = `確認下單：
-交易對: ${formData.symbol}
-方向: ${formData.direction}
-類型: ${formData.order_type === 'MARKET' ? '市價單' : '限價單'}
-數量: ${formData.quantity}`;
-
-            if (formData.order_type === 'LIMIT') {
-                confirmText += `\n價格: $${formData.price}`;
-            }
-
-            if (formData.stop_price) {
-                confirmText += `\n止損: $${formData.stop_price}`;
-            }
-
-            confirmText += `\n槓桿: ${formData.leverage}x\n\n確定要下單嗎？`;
-
-            tg.showConfirm(confirmText, function(confirmed) {
-                if (confirmed) {
-                    submitBtn.disabled = true;
-                    submitBtn.textContent = '處理中...';
-                    tg.sendData(JSON.stringify(formData));
-                    tg.close();
+        # 處理 WebApp 數據
+        @self.bot.message_handler(content_types=['web_app_data'])
+        def handle_web_app_data(message):
+            """處理 WebApp 傳回的數據"""
+            try:
+                data = json.loads(message.web_app_data.data)
+                logger.info(f"收到 WebApp 數據: {data}")
+                
+                # 解析表單數據
+                symbol = data.get('symbol', 'BTCUSDT')
+                if not symbol.endswith('USDT'):
+                    symbol = symbol + 'USDT'
+                
+                direction = data.get('direction', 'BUY')
+                quantity = float(data.get('quantity', 0))
+                leverage = int(data.get('leverage', 10))
+                order_type = data.get('order_type', 'MARKET')
+                price = data.get('price', 0)
+                stop_price = data.get('stop_price', 0)
+                
+                # 建立訂單數據
+                order_data = {
+                    'symbol': symbol.upper(),
+                    'side': 'BUY' if direction == '做多' else 'SELL',
+                    'order_type': order_type,
+                    'quantity': quantity,
+                    'leverage': leverage
                 }
-            });
-        });
+                
+                if order_type == 'LIMIT' and price > 0:
+                    order_data['price'] = float(price)
+                
+                if stop_price > 0:
+                    order_data['stop_price'] = float(stop_price)
+                
+                # 執行下單
+                self.execute_order(message, order_data, data)
+                
+            except Exception as e:
+                logger.error(f"WebApp 數據處理錯誤: {e}")
+                self.bot.reply_to(message, f"❌ 數據處理失敗：{str(e)}")
 
-        // 監聽表單變化，更新按鈕狀態
-        form.addEventListener('input', function() {
-            const requiredFields = [...form.querySelectorAll('input[required], select[required]')]
-                .filter(field => field.style.display !== 'none' && field.offsetParent !== null);
+    def execute_order(self, message, order_data, original_data):
+        """執行訂單"""
+        try:
+            # 設定槓桿
+            self.binance_client.futures_change_leverage(
+                symbol=order_data['symbol'],
+                leverage=order_data['leverage']
+            )
             
-            const allFilled = requiredFields.every(field => field.value.trim() !== '');
-            submitBtn.disabled = !allFilled;
-        });
+            # 準備訂單參數
+            order_params = {
+                'symbol': order_data['symbol'],
+                'side': order_data['side'],
+                'type': order_data['order_type'],
+                'quantity': order_data['quantity']
+            }
+            
+            # 限價單需要價格和時效
+            if order_data['order_type'] == 'LIMIT':
+                order_params['price'] = order_data['price']
+                order_params['timeInForce'] = 'GTC'
+            
+            # 執行主訂單
+            result = self.binance_client.futures_create_order(**order_params)
+            
+            # 如果有止損價，建立止損單
+            stop_order_result = None
+            if order_data.get('stop_price', 0) > 0:
+                try:
+                    stop_side = 'SELL' if order_data['side'] == 'BUY' else 'BUY'
+                    stop_order_params = {
+                        'symbol': order_data['symbol'],
+                        'side': stop_side,
+                        'type': 'STOP_MARKET',
+                        'quantity': order_data['quantity'],
+                        'stopPrice': order_data['stop_price']
+                    }
+                    stop_order_result = self.binance_client.futures_create_order(**stop_order_params)
+                except Exception as stop_e:
+                    logger.error(f"止損單建立失敗: {stop_e}")
+            
+            # 成功回覆
+            success_text = f"""
+✅ **下單成功！**
 
-        // 設定返回按鈕
-        tg.BackButton.show();
-        tg.BackButton.onClick(function() {
-            tg.close();
-        });
+📋 **主訂單號：** {result['orderId']}
+📊 **交易對：** {order_data['symbol']}
+📈 **方向：** {original_data.get('direction', '未知')}
+💰 **數量：** {order_data['quantity']}
+⚙️ **槓桿：** {order_data['leverage']}x
+🕐 **時間：** {datetime.now().strftime('%H:%M:%S')}
+            """
+            
+            if order_data['order_type'] == 'LIMIT':
+                success_text += f"🎯 **價格：** {order_data['price']} USDT\n"
+            
+            if stop_order_result:
+                success_text += f"🛡️ **止損單號：** {stop_order_result['orderId']}\n"
+                success_text += f"🔻 **止損價：** {order_data['stop_price']} USDT\n"
+            elif order_data.get('stop_price', 0) > 0:
+                success_text += f"⚠️ **止損單建立失敗**\n"
+            
+            self.bot.reply_to(message, success_text, parse_mode='Markdown')
+            logger.info(f"訂單執行成功: {result['orderId']}")
+            
+        except BinanceAPIException as e:
+            error_text = f"❌ **下單失敗**\n\n**錯誤：** {e.message}"
+            self.bot.reply_to(message, error_text, parse_mode='Markdown')
+            logger.error(f"幣安 API 錯誤: {e}")
+            
+        except Exception as e:
+            error_text = f"❌ **下單失敗**\n\n**錯誤：** {str(e)}"
+            self.bot.reply_to(message, error_text, parse_mode='Markdown')
+            logger.error(f"下單執行錯誤: {e}")
 
-        // 初始檢查表單狀態
-        submitBtn.disabled = true;
-    </script>
-</body>
-</html>
+    def run(self):
+        """啟動機器人"""
+        try:
+            if not self.initialize_binance():
+                logger.error("❌ 無法連接到幣安 API，機器人啟動失敗")
+                return False
+            
+            logger.info("🚀 機器人啟動成功，開始接收訊息...")
+            print("🚀 機器人已啟動，可以開始使用！")
+            print("📱 請到 Telegram 發送 /start 開始使用")
+            
+            self.bot.infinity_polling(none_stop=True, interval=0)
+            
+        except Exception as e:
+            logger.error(f"機器人運行錯誤: {e}")
+            print(f"❌ 機器人運行失敗: {e}")
+            return False
+
+if __name__ == "__main__":
+    try:
+        bot = BinanceOrderBot()
+        bot.run()
+    except KeyboardInterrupt:
+        print("\n👋 機器人已停止")
+    except Exception as e:
+        print(f"❌ 啟動失敗: {e}")
