@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幣安下單機器人</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: var(--tg-theme-secondary-bg-color, #f8f9fa);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--tg-theme-button-color, #3390ec);
+            margin-bottom: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            color: var(--tg-theme-text-color, #000000);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--tg-theme-button-color, #3390ec);
+            border-radius: 8px;
+            font-size: 16px;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--tg-theme-button-color, #2c82df);
+            box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1);
+        }
+
+        .two-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 16px;
+            background: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-top: 8px;
+        }
+
+        .submit-button:disabled {
+            background: var(--tg-theme-hint-color, #6c757d);
+            cursor: not-allowed;
+        }
+
+        .warning {
+            background: #ff9500;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .icon {
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        #price_group {
+            display: none;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 16px;
+                margin: 10px;
+            }
+            
+            .two-columns {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 幣安下單機器人</h1>
+        </div>
+
+        <form id="orderForm">
+            <!-- 交易對選擇 -->
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="icon">🎯</span>交易對
+                </label>
+                <select class="form-control" id="symbol" required>
+                    <option value="">請選擇交易對</option>
+                    <option value="BTC">BTC</option>
+                    <option value="ETH">ETH</option>
+                    <option value="BNB">BNB</option>
+                    <option value="ADA">ADA</option>
+                    <option value="SOL">SOL</option>
+                    <option value="XRP">XRP</option>
+                    <option value="DOGE">DOGE</option>
+                    <option value="DOT">DOT</option>
+                </select>
+            </div>
+
+            <!-- 做多做空 -->
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="icon">📈</span>交易方向
+                </label>
+                <select class="form-control" id="direction" required>
+                    <option value="">請選擇方向</option>
+                    <option value="做多">📈 做多 (BUY)</option>
+                    <option value="做空">📉 做空 (SELL)</option>
+                </select>
+            </div>
+
+            <!-- 訂單類型 -->
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="icon">⚙️</span>訂單類型
+                </label>
+                <select class="form-control" id="order_type" required>
+                    <option value="">請選擇類型</option>
+                    <option value="MARKET">⚡ 市價單</option>
+                    <option value="LIMIT">🎯 限價單</option>
+                </select>
+            </div>
+
+            <!-- 數量 -->
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="icon">💰</span>數量
+                </label>
+                <input type="number" class="form-control" id="quantity" 
+                       placeholder="例如: 0.01" step="0.00001" min="0" required>
+            </div>
+
+            <!-- 限價 (僅限價單顯示) -->
+            <div class="form-group" id="price_group">
+                <label class="form-label">
+                    <span class="icon">🎯</span>限價 (USDT)
+                </label>
+                <input type="number" class="form-control" id="price" 
+                       placeholder="例如: 50000" step="0.01" min="0">
+            </div>
+
+            <!-- 槓桿倍數 -->
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="icon">⚙️</span>槓桿倍數
+                </label>
+                <select class="form-control" id="leverage" required>
+                    <option value="">請選擇槓桿</option>
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                    <option value="3">3x</option>
+                    <option value="5">5x</option>
+                    <option value="10">10x</option>
+                    <option value="20">20x</option>
+                    <option value="50">50x</option>
+                    <option value="75">75x</option>
+                    <option value="100">100x</option>
+                </select>
+            </div>
+
+            <div class="warning">
+                ⚠️ <strong>風險提示：</strong> 永續合約交易具有高風險，請謹慎操作！
+            </div>
+
+            <!-- 提交按鈕 -->
+            <button type="submit" class="submit-button" id="submitBtn">
+                🚀 執行下單
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // 初始化 Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // 表單處理
+        const form = document.getElementById('orderForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const orderTypeSelect = document.getElementById('order_type');
+        const priceGroup = document.getElementById('price_group');
+        const priceInput = document.getElementById('price');
+
+        // 監聽訂單類型變化
+        orderTypeSelect.addEventListener('change', function() {
+            if (this.value === 'LIMIT') {
+                priceGroup.style.display = 'block';
+                priceInput.required = true;
+            } else {
+                priceGroup.style.display = 'none';
+                priceInput.required = false;
+                priceInput.value = '';
+            }
+        });
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // 收集表單資料
+            const formData = {
+                symbol: document.getElementById('symbol').value,
+                direction: document.getElementById('direction').value,
+                order_type: document.getElementById('order_type').value,
+                quantity: document.getElementById('quantity').value,
+                leverage: document.getElementById('leverage').value
+            };
+
+            // 限價單需要價格
+            if (formData.order_type === 'LIMIT') {
+                formData.price = document.getElementById('price').value;
+            }
+
+            // 驗證資料
+            if (!formData.symbol || !formData.direction || !formData.order_type || 
+                !formData.quantity || !formData.leverage) {
+                tg.showAlert('請填寫所有必填欄位！');
+                return;
+            }
+
+            if (parseFloat(formData.quantity) <= 0) {
+                tg.showAlert('數量必須大於 0！');
+                return;
+            }
+
+            if (formData.order_type === 'LIMIT' && parseFloat(formData.price) <= 0) {
+                tg.showAlert('限價必須大於 0！');
+                return;
+            }
+
+            // 確認對話框
+            let confirmText = `確認下單資訊：
+交易對: ${formData.symbol}USDT
+方向: ${formData.direction}
+類型: ${formData.order_type === 'MARKET' ? '市價單' : '限價單'}
+數量: ${formData.quantity}`;
+
+            if (formData.order_type === 'LIMIT') {
+                confirmText += `\n價格: $${formData.price} USDT`;
+            }
+
+            confirmText += `\n槓桿: ${formData.leverage}x\n\n確定要下單嗎？`;
+
+            tg.showConfirm(confirmText, function(confirmed) {
+                if (confirmed) {
+                    // 禁用按鈕防止重複提交
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = '⏳ 處理中...';
+
+                    // 發送資料給機器人
+                    tg.sendData(JSON.stringify(formData));
+                    tg.close();
+                }
+            });
+        });
+
+        // 監聽表單變化，更新按鈕狀態
+        form.addEventListener('input', function() {
+            const requiredFields = [...form.querySelectorAll('input[required], select[required]')]
+                .filter(field => field.style.display !== 'none' && field.offsetParent !== null);
+            
+            const allFilled = requiredFields.every(field => field.value.trim() !== '');
+            submitBtn.disabled = !allFilled;
+        });
+
+        // 設定返回按鈕
+        tg.BackButton.show();
+        tg.BackButton.onClick(function() {
+            tg.close();
+        });
+
+        // 初始檢查表單狀態
+        submitBtn.disabled = true;
+    </script>
+</body>
+</html>
