@@ -80,12 +80,6 @@
             -moz-appearance: textfield;
         }
 
-        .two-columns {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-        }
-
         .submit-button {
             width: 100%;
             padding: 16px;
@@ -109,11 +103,6 @@
             .container {
                 padding: 16px;
                 margin: 10px;
-            }
-            
-            .two-columns {
-                grid-template-columns: 1fr;
-                gap: 12px;
             }
         }
     </style>
@@ -153,12 +142,11 @@
             <!-- 數量 -->
             <div class="form-group">
                 <label class="form-label">數量</label>
-                <input type="number" class="form-control" id="quantity" 
-                       placeholder="例如: 3000000" 
-                       step="any" 
+                <input type="text" class="form-control" id="quantity" 
+                       placeholder="例如: 3,000,000" 
                        inputmode="decimal" 
                        autocomplete="off" 
-                       min="0" required>
+                       required>
             </div>
 
             <!-- 限價 -->
@@ -220,31 +208,42 @@
         const priceInput = document.getElementById('price');
         const quantityInput = document.getElementById('quantity');
 
-        // 簡化的千分位格式化 - 只在失去焦點時格式化
-        function formatNumber(num) {
-            if (num === '' || isNaN(num)) return num;
-            return parseFloat(num).toLocaleString('en-US', {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 8
-            });
+        // 簡單的千分位格式化 - 不用 parseFloat 避免精度問題
+        function addCommas(str) {
+            // 移除所有非數字和小數點的字符
+            let cleanStr = str.replace(/[^\d.]/g, '');
+            
+            // 分離整數和小數部分
+            let parts = cleanStr.split('.');
+            let integerPart = parts[0];
+            let decimalPart = parts[1] || '';
+            
+            // 為整數部分添加千分位
+            integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            
+            // 組合結果
+            return decimalPart ? integerPart + '.' + decimalPart : integerPart;
         }
 
-        // 移除千分位格式，保留數字
+        // 移除千分位，保留原始數字
         function removeCommas(str) {
             return str.replace(/,/g, '');
         }
 
-        // 數量欄位處理 - 只在失去焦點時格式化，避免輸入干擾
-        quantityInput.addEventListener('blur', function() {
-            const rawValue = removeCommas(this.value);
-            if (!isNaN(rawValue) && rawValue !== '') {
-                this.value = formatNumber(rawValue);
-            }
-        });
-
-        // 獲得焦點時移除千分位，方便編輯
-        quantityInput.addEventListener('focus', function() {
-            this.value = removeCommas(this.value);
+        // 數量欄位千分位處理 - 實時格式化但不干擾輸入
+        quantityInput.addEventListener('input', function() {
+            let cursorPos = this.selectionStart;
+            let oldValue = this.value;
+            let oldLength = oldValue.length;
+            
+            // 格式化
+            let newValue = addCommas(oldValue);
+            this.value = newValue;
+            
+            // 調整游標位置
+            let newLength = newValue.length;
+            let diff = newLength - oldLength;
+            this.setSelectionRange(cursorPos + diff, cursorPos + diff);
         });
 
         // 監聽訂單類型變化
@@ -285,7 +284,7 @@
                 return;
             }
 
-            if (parseFloat(rawQuantity) <= 0) {
+            if (parseFloat(rawQuantity) <= 0 || isNaN(parseFloat(rawQuantity))) {
                 tg.showAlert('數量必須大於 0！');
                 return;
             }
@@ -296,7 +295,7 @@
             }
 
             // 確認對話框
-            const formattedQuantity = formatNumber(rawQuantity);
+            const formattedQuantity = addCommas(rawQuantity);
             let confirmText = `確認下單：
 交易對: ${formData.symbol}
 方向: ${formData.direction}
