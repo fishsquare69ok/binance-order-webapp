@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>幣安下單機器人</title>
+    <title>單邊下單機器人</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
@@ -114,7 +114,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>單邊下單機器人</h1>
+            <h1>📊 幣安下單機器人</h1>
         </div>
 
         <form id="orderForm">
@@ -149,21 +149,33 @@
             <div class="form-group">
                 <label class="form-label">數量</label>
                 <input type="number" class="form-control" id="quantity" 
-                       placeholder="例如: 0.01" step="0.00001" min="0" required>
+                       placeholder="例如: 0.01" 
+                       step="any" 
+                       inputmode="decimal" 
+                       autocomplete="off" 
+                       min="0" required>
             </div>
 
             <!-- 限價 (僅限價單顯示) -->
             <div class="form-group" id="price_group">
                 <label class="form-label">限價 (USDT)</label>
                 <input type="number" class="form-control" id="price" 
-                       placeholder="例如: 50000" step="0.01" min="0">
+                       placeholder="例如: 0.3961" 
+                       step="any" 
+                       inputmode="decimal" 
+                       autocomplete="off" 
+                       min="0">
             </div>
 
             <!-- 止損價 -->
             <div class="form-group">
                 <label class="form-label">止損價 (USDT)</label>
                 <input type="number" class="form-control" id="stop_price" 
-                       placeholder="例如: 48000" step="0.01" min="0">
+                       placeholder="例如: 0.3783" 
+                       step="any" 
+                       inputmode="decimal" 
+                       autocomplete="off" 
+                       min="0">
             </div>
 
             <!-- 槓桿倍數 -->
