@@ -69,6 +69,17 @@
             box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1);
         }
 
+        /* 隱藏 number input 的上下箭頭 */
+        .form-control[type="number"]::-webkit-outer-spin-button,
+        .form-control[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .form-control[type="number"] {
+            -moz-appearance: textfield;
+        }
+
         .two-columns {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -143,7 +154,7 @@
             <div class="form-group">
                 <label class="form-label">數量</label>
                 <input type="number" class="form-control" id="quantity" 
-                       placeholder="例如: 0.01" 
+                       placeholder="例如: 3000000" 
                        step="any" 
                        inputmode="decimal" 
                        autocomplete="off" 
@@ -209,7 +220,7 @@
         const priceInput = document.getElementById('price');
         const quantityInput = document.getElementById('quantity');
 
-        // 千分位格式化函數
+        // 簡化的千分位格式化 - 只在失去焦點時格式化
         function formatNumber(num) {
             if (num === '' || isNaN(num)) return num;
             return parseFloat(num).toLocaleString('en-US', {
@@ -223,21 +234,17 @@
             return str.replace(/,/g, '');
         }
 
-        // 數量欄位千分位處理
-        quantityInput.addEventListener('input', function() {
-            const cursorPos = this.selectionStart;
-            const oldLength = this.value.length;
+        // 數量欄位處理 - 只在失去焦點時格式化，避免輸入干擾
+        quantityInput.addEventListener('blur', function() {
             const rawValue = removeCommas(this.value);
-            
             if (!isNaN(rawValue) && rawValue !== '') {
-                const formatted = formatNumber(rawValue);
-                this.value = formatted;
-                
-                // 調整游標位置
-                const newLength = this.value.length;
-                const lengthDiff = newLength - oldLength;
-                this.setSelectionRange(cursorPos + lengthDiff, cursorPos + lengthDiff);
+                this.value = formatNumber(rawValue);
             }
+        });
+
+        // 獲得焦點時移除千分位，方便編輯
+        quantityInput.addEventListener('focus', function() {
+            this.value = removeCommas(this.value);
         });
 
         // 監聽訂單類型變化
@@ -332,11 +339,8 @@
         });
 
         // 初始化表單狀態
-        // 預設顯示限價欄位（因為預設是限價單）
         priceGroup.style.display = 'block';
         priceInput.required = true;
-        
-        // 初始檢查表單狀態
         submitBtn.disabled = true;
     </script>
 </body>
